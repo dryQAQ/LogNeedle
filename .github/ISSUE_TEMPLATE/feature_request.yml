@@ -1,0 +1,67 @@
+name: Feature request
+description: Suggest a capability, an option, or a language for the UI
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        LogNeedle is deliberately a single HTML file with no dependencies, no build step and no network access.
+        Ideas that keep that promise are very welcome; ideas that need a server, a bundler or an npm package
+        are probably a different project.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the situation, not the solution. "I have 4 GB of Tomcat logs on a jump host and I cannot install anything" beats "add a streaming mode".
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like it to do?
+      description: If you have an idea of how it should look or behave in the UI, sketch it here. Screenshots or mockups help.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What do you do today instead?
+      description: Other tools, workarounds, or a fork of this one.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part does this touch?
+      options:
+        - UI text / translation (i18n)
+        - Matching (keywords, regex, filters)
+        - Encodings
+        - Performance / large folders
+        - Result display (cards, wrap, highlight, export)
+        - Documentation
+        - Not sure / other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Would you be willing to open a pull request for it?
+      options:
+        - "Yes, I can implement it"
+        - "Yes, with some guidance"
+        - "No, I am only reporting the idea"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      options:
+        - label: I understand the proposal must not add dependencies, external references, `<script type="module">`, Web Workers, or `fetch` calls.
+          required: true

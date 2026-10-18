@@ -1,0 +1,106 @@
+name: Bug report
+description: Something in logneedle.html behaves incorrectly
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report — two ground rules first:
+
+        - **Do not paste real log content.** Replace it with synthetic lines that still reproduce the problem. Logs carry tokens, credentials and customer data, and issues are public.
+        - **Check the console before filing.** DevTools → Console, then reload and reproduce. One error message usually explains the entire symptom.
+
+  - type: input
+    id: version
+    attributes:
+      label: LogNeedle version
+      description: Shown in the self-test panel header (自检, then "· v1.0.0"), or near the top of the file you downloaded.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      description: For example Edge 154, Chrome 141, Firefox 145, Safari 18.
+      placeholder: "Edge 154.0.3705.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: opened
+    attributes:
+      label: How did you open the page?
+      options:
+        - Double-clicked the local file (file://)
+        - Online demo on GitHub Pages
+        - Other (explain below)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: folder_source
+    attributes:
+      label: How did you give it the log folder?
+      options:
+        - Choose log folder (File System Access API)
+        - Old-browser folder picker (旧版本浏览器下选择)
+        - Dragged the folder onto the page
+        - Never got that far
+    validations:
+      required: true
+
+  - type: input
+    id: encoding
+    attributes:
+      label: Log encoding
+      description: UTF-8, GBK, UTF-16, unknown — and say whether the text looked like mojibake.
+      placeholder: "GBK (Chinese Windows service log)"
+
+  - type: input
+    id: size
+    attributes:
+      label: Size of the folder and of the largest file involved
+      description: Approximate is fine.
+      placeholder: "about 400 files, largest 120 MB"
+
+  - type: input
+    id: keyword
+    attributes:
+      label: Keyword and options used
+      description: The keyword (a redacted equivalent is fine) plus any option you changed: regex, case sensitivity, multi-keyword, context lines, sub-path filter, file globs.
+      placeholder: "timeout, regex off, case-insensitive"
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+      description: Redacted or synthesized lines are welcome. Mention if the tab froze, if results were capped, or if a card looked wrong.
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Console output (DevTools → Console)
+      description: Paste text rather than a screenshot when you can.
+      render: text
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Before submitting
+      options:
+        - label: I ran the in-page 自检 (Self-test) button and pasted any failures below.
+        - label: I removed or replaced every piece of real log content and any secrets in this report.
+          required: true
+        - label: I searched the existing issues for the same symptom.

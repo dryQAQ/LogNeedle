@@ -1,0 +1,4 @@
+{"ts":"2026-10-09T08:00:00+08:00","name":"http.server.duration","tags":{"route":"/api/v1/pay/callback","method":"POST","status":"500"},"value":3001.2}
+{"ts":"2026-10-09T08:01:00+08:00","name":"jvm.gc.pause","tags":{"collector":"G1 Young Generation"},"value":8.4}
+{"ts":"2026-10-09T08:02:00+08:00","name":"db.pool.active","tags":{"pool":"primary"},"value":7}
+{"ts":"2026-10-09T08:03:00+08:00","name":"order.pay.fail.total","tags":{"channel":"wechatpay","reason":"timeout"},"value":4}

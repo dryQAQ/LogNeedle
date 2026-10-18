@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions, workflows and show-and-tell
+    url: https://github.com/dryQAQ/LogNeedle/discussions
+    about: Ask how to use LogNeedle, share how you run it in your environment, or discuss the roadmap. Bug reports and concrete feature requests belong in the issue tracker.

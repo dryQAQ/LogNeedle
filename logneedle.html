@@ -1,0 +1,1618 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LogNeedle · 日志关键词提取器</title>
+<style>
+:root{
+  --bg:#f4f5f7; --panel:#fff; --panel2:#fafbfc; --fg:#1f2329; --dim:#6b7280;
+  --line:#e4e7ec; --line2:#cfd4dc; --accent:#2563eb; --accentfg:#fff;
+  --mark:#ffe58f; --markfg:#3d2b00; --ctx:#8b9099; --danger:#d93025; --ok:#0f7b52; --warn:#b26a00;
+  --sans:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Cascadia Mono","Microsoft YaHei",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#14161a; --panel:#1c1f24; --panel2:#20242b; --fg:#e6e8eb; --dim:#9aa1ab;
+    --line:#2b3038; --line2:#3a414b; --accent:#4b8cf7; --accentfg:#0b1020;
+    --mark:#7a5c00; --markfg:#ffeaa0; --ctx:#7c838d; --danger:#ff6b5e; --ok:#4ecb9b; --warn:#e0a458;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.5 var(--sans);-webkit-text-size-adjust:100%}
+body.dragging{outline:3px dashed var(--accent);outline-offset:-10px}
+.top{position:sticky;top:0;z-index:30;background:var(--panel);border-bottom:1px solid var(--line);padding:10px 14px;display:flex;flex-direction:column;gap:8px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.brand{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.brand h1{margin:0;font-size:16px}
+.brand .sub{font-size:12px;color:var(--dim)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{font:inherit;padding:6px 12px;border:1px solid var(--line2);background:var(--panel2);color:var(--fg);border-radius:6px;cursor:pointer;white-space:nowrap}
+.btn:hover:not(:disabled){border-color:var(--accent)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accentfg);font-weight:600}
+.btn.tiny{padding:2px 8px;font-size:12px;border-radius:5px}
+input[type=text],input[type=number],select{font:inherit;padding:5px 8px;border:1px solid var(--line2);border-radius:6px;background:var(--panel2);color:var(--fg)}
+#keyword{flex:1 1 300px;min-width:200px;padding:7px 10px}
+#keyword:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.dirname{font-family:var(--mono);font-size:12px;color:var(--dim);max-width:36vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hint{font-size:12px;color:var(--dim)}
+.opts summary{cursor:pointer;font-size:13px;color:var(--dim);padding:2px 0;user-select:none}
+.optgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:7px 16px;padding:9px 2px 3px}
+.optgrid label{display:flex;align-items:center;gap:6px;font-size:13px}
+.optgrid label>input[type=text]{flex:1;min-width:70px}
+.optgrid label>input[type=number]{width:88px}
+.history{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chip{font-size:12px;padding:2px 9px;border:1px solid var(--line);border-radius:99px;background:var(--panel2);color:var(--dim);cursor:pointer;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip:hover{border-color:var(--accent);color:var(--fg)}
+main{padding:14px;max-width:1500px;margin:0 auto}
+.hidden{display:none !important}
+.progress{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.bar{flex:1;height:6px;background:var(--line);border-radius:99px;overflow:hidden}
+#progressBar{height:100%;width:0;background:var(--accent);transition:width .12s linear}
+.ptext{font-size:12px;color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+.summary{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:13px;color:var(--dim)}
+.summary #summaryText{flex:1 1 320px;font-variant-numeric:tabular-nums}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-bottom:10px;overflow:hidden}
+.card-head{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--panel2);border-bottom:1px solid var(--line)}
+.card-head .path{font-family:var(--mono);font-size:12.5px;font-weight:600;word-break:break-all}
+.card-head .meta{font-size:12px;color:var(--dim);margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums}
+.card.collapsed .card-body{display:none}
+.card-body{font-family:var(--mono);font-size:12.5px;line-height:1.55;overflow-x:auto;padding:6px 0}
+.ln{display:flex;width:max-content;min-width:100%}
+.ln .no{flex:none;min-width:64px;text-align:right;padding:0 10px 0 12px;color:var(--dim);user-select:none;font-variant-numeric:tabular-nums;position:sticky;left:0;z-index:1;background:var(--panel)}
+.ln .tx{flex:1;white-space:pre;padding-right:14px}
+.card.wrap .ln{width:auto}
+.card.wrap .ln .tx{white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+.ln.ctx{color:var(--ctx)}
+mark{background:var(--mark);color:var(--markfg);border-radius:2px;padding:0 1px}
+.clipped{color:var(--warn);font-size:11px;margin-left:6px;font-family:var(--sans)}
+.empty{background:var(--panel);border:1px dashed var(--line2);border-radius:10px;padding:18px 20px;color:var(--dim);font-size:13px;line-height:1.85}
+.empty b{color:var(--fg)}
+.empty ol{margin:8px 0 0;padding-left:20px}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(10px);background:#22272e;color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:.18s;z-index:60;max-width:80vw;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.warn{background:#8a5200}
+.toast.error{background:#a32318}
+#selftestPanel{position:fixed;inset:5vh 5vw;background:var(--panel);border:1px solid var(--line2);border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.35);z-index:70;display:flex;flex-direction:column}
+#selftestPanel .st-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
+#selftestPanel .st-head b{flex:1}
+#selftestBody{overflow:auto;padding:10px 14px;font-size:13px}
+.st-row{display:flex;gap:10px;padding:4px 0;border-bottom:1px dashed var(--line)}
+.st-row .st-name{flex:0 0 auto}
+.st-pass{color:var(--ok);font-weight:600}
+.st-fail{color:var(--danger);font-weight:600}
+.st-skip{color:var(--warn);font-weight:600}
+.st-detail{color:var(--dim);font-family:var(--mono);font-size:12px;word-break:break-all}
+@media (max-width:640px){
+  .dirname{max-width:100%}
+  .ln .no{min-width:38px}
+  main{padding:10px}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <h1>LogNeedle</h1>
+    <span class="sub">日志关键词提取器 · 全部在本机浏览器内完成 · 不联网 · 不上传 · 不修改任何文件</span>
+  </div>
+
+  <div class="row">
+    <button id="dirBtn" class="btn">选择日志目录</button>
+    <button id="compatBtn" class="btn" title="旧版本浏览器（或目录选择 API 用不了时）点这里：弹出系统自带的文件夹选择框，所有浏览器都支持">旧版本浏览器下选择</button>
+    <input id="fileInput" type="file" webkitdirectory directory multiple hidden>
+    <span id="dirName" class="dirname">尚未选择目录</span>
+  </div>
+  <div class="row"><span id="modeHint" class="hint"></span></div>
+
+  <div class="row">
+    <input id="keyword" type="text" placeholder="输入查找关键词，回车即提取" autocomplete="off" spellcheck="false">
+    <button id="runBtn" class="btn primary">提取</button>
+    <button id="stopBtn" class="btn" disabled>停止</button>
+    <button id="clearBtn" class="btn">清空</button>
+    <button id="exportTxt" class="btn">导出 TXT</button>
+    <button id="exportJson" class="btn">导出 JSON</button>
+    <button id="selftestBtn" class="btn">自检</button>
+  </div>
+
+  <details id="optsDetails" class="opts">
+    <summary>选项（编码 / 过滤 / 上限 / 上下文）</summary>
+    <div class="optgrid">
+      <label><input type="checkbox" id="optCase">区分大小写</label>
+      <label><input type="checkbox" id="optRegex">正则表达式</label>
+      <label><input type="checkbox" id="optMulti">多关键词（空格或 | 分隔，任一命中）</label>
+      <label><input type="checkbox" id="optCache" checked>复用缓存（同目录换关键词更快）</label>
+      <label>编码<select id="optEncoding"></select></label>
+      <label>子目录过滤<input type="text" id="optSubPath" placeholder="如 2024-05，空=全部"></label>
+      <label>文件通配<input type="text" id="optGlobs" placeholder="如 *.log;*.txt，空=全部文本文件"></label>
+      <label>上下文行数<input type="number" id="optCtx" min="0" max="10" step="1" value="0"></label>
+      <label>每文件最多行<input type="number" id="optPerFile" min="1" max="20000" step="1" value="200"></label>
+      <label>总计最多行<input type="number" id="optTotal" min="1" max="200000" step="1" value="5000"></label>
+    </div>
+  </details>
+
+  <div class="history" id="history"></div>
+</header>
+
+<main>
+  <div id="progressWrap" class="progress hidden">
+    <div class="bar"><div id="progressBar"></div></div>
+    <div id="progressText" class="ptext"></div>
+  </div>
+
+  <div id="summary" class="summary hidden">
+    <span id="summaryText"></span>
+    <label class="hint" title="自动：按每一块的实际宽度决定是否折行，窗口拉窄会自动切换；也可手动锁定「始终换行 / 不换行」">换行<select id="optWrap">
+      <option value="auto">自动</option>
+      <option value="on">始终换行</option>
+      <option value="off">不换行</option>
+    </select></label>
+    <span id="wrapStat" class="hint"></span>
+    <button id="expandAll" class="btn tiny">全部展开</button>
+    <button id="collapseAll" class="btn tiny">全部折叠</button>
+    <button id="copyAll" class="btn tiny">复制全部结果</button>
+  </div>
+
+  <div id="results"></div>
+
+  <div id="empty" class="empty">
+    <b>使用步骤</b>
+    <ol>
+      <li>点 <b>选择日志目录</b>（Edge/Chrome 会弹目录选择并询问一次访问权限）；旧版本浏览器请用 <b>旧版本浏览器下选择</b>（系统自带的文件夹选择框，所有浏览器都支持），或者直接把文件夹<b>拖到本页面</b>上。</li>
+      <li>输入关键词，按回车或点 <b>提取</b>。结果按每个文件分块显示在下方，命中处高亮。</li>
+      <li>查下一个关键词：点 <b>清空</b>，直接输入新词再提取即可；同一个目录会自动复用缓存，第二次明显更快。</li>
+      <li>结果区的 <b>换行</b> 可选 自动 / 始终换行 / 不换行：<b>自动</b> 会按每一块的实际宽度决定是否折行（能放下就不折行、保持列对齐），把窗口拉窄会自动切换成折行；选「不换行」时长行可左右滚动，行号固定在左侧不跟着滚。</li>
+      <li>中文变成乱码时，把 <b>编码</b> 从「自动检测」改成 <b>GBK</b> 或 <b>GB18030</b>（繁体日志选 Big5）。</li>
+      <li>默认跳过二进制文件与常见无关目录（.git / node_modules / $RECYCLE.BIN 等）；大文件自动分块流式读取，不会撑爆内存。点 <b>自检</b> 可验证本页核心逻辑是否正常。</li>
+    </ol>
+  </div>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<section id="selftestPanel" class="hidden">
+  <div class="st-head">
+    <b>自检结果</b>
+    <span id="selftestStat" class="hint"></span>
+    <button id="selftestClose" class="btn tiny">关闭</button>
+  </div>
+  <div id="selftestBody"></div>
+</section>
+
+<script id="core">
+(function (root) {
+  'use strict';
+
+  const VERSION = '1.0.0';
+
+  const CONST = {
+    MAX_LINE_CHARS: 4000,
+    CACHE_MAX_FILE: 8 * 1024 * 1024,
+    CACHE_BUDGET: 192 * 1024 * 1024,
+    PROBE_BYTES: 512 * 1024,
+    HEAD_BYTES: 64 * 1024,
+    MAX_DEPTH: 16,
+    MAX_ENTRIES: 300000
+  };
+
+  /* ---------- 编码 ---------- */
+
+  const ENCODING_LABELS = [
+    { value: 'auto', label: '自动检测' },
+    { value: 'utf-8', label: 'UTF-8' },
+    { value: 'gbk', label: 'GBK' },
+    { value: 'gb18030', label: 'GB18030' },
+    { value: 'big5', label: 'Big5（繁体）' },
+    { value: 'shift_jis', label: 'Shift_JIS（日文）' },
+    { value: 'euc-kr', label: 'EUC-KR（韩文）' },
+    { value: 'utf-16le', label: 'UTF-16LE' },
+    { value: 'utf-16be', label: 'UTF-16BE' },
+    { value: 'windows-1252', label: 'Windows-1252' }
+  ];
+
+  let _avail = null;
+  function availableEncodings() {
+    if (_avail) return _avail;
+    _avail = {};
+    for (const e of ENCODING_LABELS) {
+      if (e.value === 'auto') { _avail[e.value] = true; continue; }
+      try { new TextDecoder(e.value); _avail[e.value] = true; } catch (err) { _avail[e.value] = false; }
+    }
+    return _avail;
+  }
+
+  function tryDecode(label, bytes, fatal) {
+    try { return new TextDecoder(label, { fatal: !!fatal }).decode(bytes); } catch (err) { return null; }
+  }
+
+  function isValidUtf8(bytes, lenientTail) {
+    const n = bytes.length;
+    let i = 0;
+    while (i < n) {
+      const b = bytes[i];
+      if (b < 0x80) { i++; continue; }
+      if (b >= 0xC2 && b <= 0xDF) {
+        if (i + 1 >= n) return !!lenientTail;
+        if ((bytes[i + 1] & 0xC0) !== 0x80) return false;
+        i += 2; continue;
+      }
+      if (b >= 0xE0 && b <= 0xEF) {
+        if (i + 2 >= n) return !!lenientTail;
+        const b1 = bytes[i + 1], b2 = bytes[i + 2];
+        if ((b1 & 0xC0) !== 0x80 || (b2 & 0xC0) !== 0x80) return false;
+        if (b === 0xE0 && b1 < 0xA0) return false;
+        if (b === 0xED && b1 > 0x9F) return false;
+        i += 3; continue;
+      }
+      if (b >= 0xF0 && b <= 0xF4) {
+        if (i + 3 >= n) return !!lenientTail;
+        const b1 = bytes[i + 1], b2 = bytes[i + 2], b3 = bytes[i + 3];
+        if ((b1 & 0xC0) !== 0x80 || (b2 & 0xC0) !== 0x80 || (b3 & 0xC0) !== 0x80) return false;
+        if (b === 0xF0 && b1 < 0x90) return false;
+        if (b === 0xF4 && b1 > 0x8F) return false;
+        i += 4; continue;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  function sniffUtf16(bytes) {
+    const n = Math.min(bytes.length, 4096);
+    if (n < 16) return null;
+    let even = 0, odd = 0;
+    for (let i = 0; i < n; i++) {
+      if (bytes[i] === 0) { if (i % 2 === 0) even++; else odd++; }
+    }
+    const zeros = even + odd;
+    if (zeros / n < 0.2) return null;
+    if (odd > even * 4) return 'utf-16le';
+    if (even > odd * 4) return 'utf-16be';
+    return null;
+  }
+
+  function hasBom(bytes) {
+    if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) return 'utf-8';
+    if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) return 'utf-16le';
+    if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) return 'utf-16be';
+    return null;
+  }
+
+  function detectEncoding(bytes) {
+    const bom = hasBom(bytes);
+    if (bom) return bom;
+    const u16 = sniffUtf16(bytes);
+    if (u16) return u16;
+    if (bytes.length === 0) return 'utf-8';
+    const sampled = bytes.length > CONST.PROBE_BYTES;
+    const sample = sampled ? bytes.subarray(0, CONST.PROBE_BYTES) : bytes;
+    if (isValidUtf8(sample, sampled)) return 'utf-8';
+    if (availableEncodings()['gb18030'] && tryDecode('gb18030', sample, true) !== null) return 'gb18030';
+    if (availableEncodings()['big5'] && tryDecode('big5', sample, true) !== null) return 'big5';
+    return 'utf-8';
+  }
+
+  function isBinary(bytes, encoding) {
+    if (encoding === 'utf-16le' || encoding === 'utf-16be') return false;
+    const n = Math.min(bytes.length, 8192);
+    for (let i = 0; i < n; i++) if (bytes[i] === 0) return true;
+    return false;
+  }
+
+  function decodeBytes(bytes, label) {
+    const d = tryDecode(label, bytes, false);
+    if (d !== null) return d;
+    return tryDecode('utf-8', bytes, false) || '';
+  }
+
+  /* ---------- 行与匹配 ---------- */
+
+  function splitLines(text) {
+    if (!text) return [];
+    const lines = text.split(/\r\n|\n|\r/);
+    if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+    return lines;
+  }
+
+  function escapeRegExp(s) {
+    return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function makeMatcher(input, opts) {
+    const o = opts || {};
+    const raw = String(input == null ? '' : input).trim();
+    if (!raw) return { error: '请输入关键词' };
+    let terms;
+    if (o.multi) terms = raw.split(/[\s|]+/).filter(Boolean);
+    else terms = [raw];
+    if (!terms.length) return { error: '请输入关键词' };
+    const flags = o.caseSensitive ? 'g' : 'gi';
+    const matchers = [];
+    for (const t of terms) {
+      let re;
+      try { re = new RegExp(o.regex ? t : escapeRegExp(t), flags); }
+      catch (err) { return { error: '正则表达式非法：' + (err && err.message ? err.message : err) }; }
+      matchers.push({ raw: t, re: re });
+    }
+    return { matchers: matchers, terms: terms };
+  }
+
+  function matchRanges(line, matchers) {
+    let ranges = null;
+    for (const m of matchers) {
+      m.re.lastIndex = 0;
+      let hit;
+      while ((hit = m.re.exec(line)) !== null) {
+        const len = hit[0].length;
+        if (len === 0) { m.re.lastIndex++; continue; }
+        if (!ranges) ranges = [];
+        ranges.push([hit.index, hit.index + len]);
+        if (m.re.lastIndex <= hit.index) m.re.lastIndex = hit.index + 1;
+      }
+    }
+    if (!ranges) return null;
+    ranges.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
+    const merged = [ranges[0]];
+    for (let i = 1; i < ranges.length; i++) {
+      const last = merged[merged.length - 1], cur = ranges[i];
+      if (cur[0] <= last[1]) { if (cur[1] > last[1]) last[1] = cur[1]; }
+      else merged.push(cur);
+    }
+    return merged;
+  }
+
+  class HitCollector {
+    constructor(opts) {
+      const o = opts || {};
+      this.cap = Math.max(1, (o.perFileCap | 0) || 200);
+      this.ctx = Math.max(0, Math.min(10, (o.ctxLines | 0) || 0));
+      this.items = [];
+      this.ring = [];
+      this.pendingAfter = 0;
+      this.matched = 0;
+      this.totalLines = 0;
+      this.truncated = false;
+    }
+    clip(line, ranges) {
+      let text = line, clipped = false;
+      if (text.length > CONST.MAX_LINE_CHARS) { text = text.slice(0, CONST.MAX_LINE_CHARS); clipped = true; }
+      let rs = ranges;
+      if (rs && clipped) {
+        rs = rs.filter(function (r) { return r[0] < text.length; })
+               .map(function (r) { return [r[0], Math.min(r[1], text.length)]; });
+        if (!rs.length) rs = null;
+      }
+      return { text: text, ranges: rs, clipped: clipped };
+    }
+    lastN() { return this.items.length ? this.items[this.items.length - 1].n : 0; }
+    push(it) {
+      if (this.items.length >= this.cap) { this.truncated = true; return false; }
+      this.items.push(it);
+      return true;
+    }
+    feed(lineNo, line, ranges) {
+      this.totalLines = lineNo;
+      const c = this.clip(line, ranges);
+      if (ranges) {
+        this.matched++;
+        if (this.ctx > 0) {
+          const lastN = this.lastN();
+          for (const b of this.ring) {
+            if (b.n <= lastN) continue;
+            if (!this.push({ n: b.n, text: b.text, clipped: b.clipped, ranges: null, ctx: true })) break;
+          }
+        }
+        this.push({ n: lineNo, text: c.text, clipped: c.clipped, ranges: c.ranges, ctx: false });
+        this.pendingAfter = this.ctx;
+      } else if (this.pendingAfter > 0) {
+        this.push({ n: lineNo, text: c.text, clipped: c.clipped, ranges: null, ctx: true });
+        this.pendingAfter--;
+      }
+      if (this.ctx > 0) {
+        this.ring.push({ n: lineNo, text: c.text, clipped: c.clipped });
+        if (this.ring.length > this.ctx) this.ring.shift();
+      }
+    }
+  }
+
+  function scanLines(lines, matchers, collector, shouldStop) {
+    for (let i = 0; i < lines.length; i++) {
+      if (shouldStop && i > 0 && (i & 511) === 0 && shouldStop()) break;
+      collector.feed(i + 1, lines[i], matchRanges(lines[i], matchers));
+    }
+    return collector;
+  }
+
+  async function* streamLines(stream, encoding) {
+    const dec = new TextDecoder(encoding || 'utf-8', { fatal: false });
+    const reader = stream.getReader();
+    let buf = '', pos = 0;
+    try {
+      for (;;) {
+        const r = await reader.read();
+        if (r.value) buf += dec.decode(r.value, { stream: !r.done });
+        if (r.done) buf += dec.decode();
+        for (;;) {
+          const iN = buf.indexOf('\n', pos);
+          const iR = buf.indexOf('\r', pos);
+          const i = (iN >= 0 && iR >= 0) ? Math.min(iN, iR) : Math.max(iN, iR);
+          if (i < 0) break;
+          if (buf[i] === '\r' && i === buf.length - 1 && !r.done) break;
+          let skip = 1;
+          if (buf[i] === '\r' && buf[i + 1] === '\n') skip = 2;
+          yield buf.slice(pos, i);
+          pos = i + skip;
+        }
+        if (pos > 65536) { buf = buf.slice(pos); pos = 0; }
+        if (r.done) break;
+      }
+      if (pos < buf.length) yield buf.slice(pos);
+    } finally {
+      try { reader.releaseLock(); } catch (err) { /* 忽略 */ }
+    }
+  }
+
+  async function scanStream(stream, encoding, matchers, collector, shouldStop) {
+    let n = 0;
+    for await (const line of streamLines(stream, encoding)) {
+      n++;
+      collector.feed(n, line, matchRanges(line, matchers));
+      if (shouldStop && (n % 512 === 0) && shouldStop()) break;
+    }
+    return collector;
+  }
+
+  /* ---------- 路径过滤 ---------- */
+
+  function globToRegExp(pattern) {
+    const p = String(pattern).replace(/\\/g, '/');
+    let out = '';
+    for (let i = 0; i < p.length; i++) {
+      const ch = p[i];
+      if (ch === '*') {
+        if (p[i + 1] === '*') { out += '.*'; i++; }
+        else out += '[^/]*';
+      } else if (ch === '?') out += '[^/]';
+      else out += escapeRegExp(ch);
+    }
+    return new RegExp('^' + out + '$', 'i');
+  }
+
+  function parseList(s) {
+    return String(s == null ? '' : s).split(/[;,\s]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+  }
+
+  function matchPath(relPath, subPath, globs) {
+    const p = String(relPath).replace(/\\/g, '/');
+    const subs = parseList(subPath).map(function (s) { return s.toLowerCase(); });
+    if (subs.length) {
+      const lower = p.toLowerCase();
+      let ok = false;
+      for (const s of subs) { if (lower.indexOf(s) >= 0) { ok = true; break; } }
+      if (!ok) return false;
+    }
+    const gs = parseList(globs);
+    if (gs.length) {
+      const name = p.split('/').pop();
+      let ok = false;
+      for (const g of gs) {
+        const re = globToRegExp(g);
+        if (re.test(g.indexOf('/') >= 0 ? p : name)) { ok = true; break; }
+      }
+      if (!ok) return false;
+    }
+    return true;
+  }
+
+  /* ---------- 输出 ---------- */
+
+  function formatBytes(n) {
+    if (!n && n !== 0) return '';
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+    return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+  }
+
+  function toPlainText(meta, files) {
+    const L = [];
+    L.push('# 日志关键词提取结果');
+    L.push('# 目录: ' + meta.dir);
+    L.push('# 关键词: ' + meta.keyword + (meta.options && meta.options.regex ? '（正则模式）' : ''));
+    L.push('# 时间: ' + meta.time);
+    L.push('# 扫描 ' + meta.scanned + ' 个文件，命中 ' + meta.hitFiles + ' 个文件 / ' + meta.hits + ' 行，用时 ' + meta.elapsed + 's'
+      + (meta.binary ? '，跳过二进制 ' + meta.binary : '')
+      + (meta.failed ? '，读取失败 ' + meta.failed : '')
+      + (meta.truncated ? '，结果已达上限被截断' : ''));
+    L.push('');
+    for (const f of files) {
+      L.push('=== ' + f.relPath + ' （命中 ' + f.matched + ' 行'
+        + (f.encoding ? '，编码 ' + f.encoding : '')
+        + (f.truncated ? '，已达上限' : '') + '） ===');
+      for (const it of f.items) {
+        L.push((it.ctx ? '  ' : '> ') + String(it.n).padStart(6, ' ') + ' | ' + it.text);
+      }
+      L.push('');
+    }
+    return L.join('\r\n');
+  }
+
+  function toJSONText(meta, files) {
+    return JSON.stringify({
+      tool: 'log-extract',
+      version: VERSION,
+      dir: meta.dir,
+      keyword: meta.keyword,
+      options: meta.options,
+      time: meta.time,
+      summary: {
+        scanned: meta.scanned, hitFiles: meta.hitFiles, hits: meta.hits,
+        elapsed: meta.elapsed, binary: meta.binary, failed: meta.failed, truncated: !!meta.truncated
+      },
+      files: files.map(function (f) {
+        return {
+          relPath: f.relPath, encoding: f.encoding, matched: f.matched, truncated: !!f.truncated,
+          lines: f.items.map(function (it) { return { n: it.n, text: it.text, ctx: !!it.ctx }; })
+        };
+      })
+    }, null, 2);
+  }
+
+  /* ---------- 自检 ---------- */
+
+  const FIX = {
+    gbkText: '第一行 正常内容 OK\n第二行 关键字 命中 关键\n第三行 错误信息 结束',
+    gbkHex: 'b5dad2bbd0d020d5fdb3a3c4dac8dd204f4b0ab5dab6fed0d020b9d8bcfcd7d620c3fcd6d020b9d8bcfc0ab5dac8fdd0d020b4edcef3d0c5cfa220bde1caf8',
+    big5Text: '測試關鍵字',
+    big5Hex: 'b4fab8d5c3f6c1e4a672'
+  };
+
+  function hexToBytes(hex) {
+    const h = String(hex).replace(/[^0-9a-fA-F]/g, '');
+    const b = new Uint8Array(h.length >> 1);
+    for (let i = 0; i < b.length; i++) b[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16);
+    return b;
+  }
+
+  function utf16leBytes(s) {
+    const b = new Uint8Array(s.length * 2);
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      b[i * 2] = c & 0xFF;
+      b[i * 2 + 1] = (c >> 8) & 0xFF;
+    }
+    return b;
+  }
+
+  function collect(items, matchers, opts) {
+    const c = new HitCollector(opts);
+    scanLines(items, matchers, c, null);
+    return c;
+  }
+
+  async function selfTest() {
+    const out = [];
+    const add = function (name, pass, detail) { out.push({ name: name, pass: !!pass, detail: detail == null ? '' : String(detail) }); };
+    const skip = function (name, detail) { out.push({ name: name, pass: true, skip: true, detail: detail == null ? '' : String(detail) }); };
+    const enc = new TextEncoder();
+    const avail = availableEncodings();
+
+    try {
+      const l = splitLines('a\r\nb\rc\nd');
+      add('splitLines 处理 CRLF/CR/LF 三种换行', l.length === 4 && l[1] === 'b' && l[2] === 'c', JSON.stringify(l));
+      add('splitLines 不产生多余空尾行', splitLines('a\n').length === 1 && splitLines('').length === 0, JSON.stringify(splitLines('a\n')));
+    } catch (e) { add('splitLines', false, e.message); }
+
+    try {
+      const bytes = enc.encode('第一行 ok\n第二行 关键字 在这里\n第三行 end\n');
+      const e1 = detectEncoding(bytes);
+      const text = decodeBytes(bytes, e1);
+      const m = makeMatcher('关键字', {});
+      const c = collect(splitLines(text), m.matchers, { perFileCap: 50, ctxLines: 0 });
+      add('UTF-8 无 BOM：识别 + 中文命中', e1 === 'utf-8' && c.matched === 1 && c.items[0].n === 2, e1 + ' matched=' + c.matched);
+    } catch (e) { add('UTF-8 无 BOM', false, e.message); }
+
+    try {
+      const raw = enc.encode('带 BOM 的日志 关键字\n');
+      const bytes = new Uint8Array(raw.length + 3);
+      bytes.set([0xEF, 0xBB, 0xBF], 0); bytes.set(raw, 3);
+      const e1 = detectEncoding(bytes);
+      const text = decodeBytes(bytes, e1);
+      const c = collect(splitLines(text), makeMatcher('关键字', {}).matchers, { perFileCap: 50, ctxLines: 0 });
+      add('UTF-8 BOM：识别并剥离 BOM', e1 === 'utf-8' && text.charCodeAt(0) !== 0xFEFF && c.matched === 1, 'first=' + text.charCodeAt(0));
+    } catch (e) { add('UTF-8 BOM', false, e.message); }
+
+    try {
+      const body = utf16leBytes('第一行 关键字 命中\n第二行 结束\n');
+      const bytes = new Uint8Array(body.length + 2);
+      bytes.set([0xFF, 0xFE], 0); bytes.set(body, 2);
+      const e1 = detectEncoding(bytes);
+      const text = decodeBytes(bytes, e1);
+      const c = collect(splitLines(text), makeMatcher('关键字', {}).matchers, { perFileCap: 50, ctxLines: 0 });
+      add('UTF-16LE BOM：识别 + 中文解码', e1 === 'utf-16le' && c.matched === 1, e1 + ' matched=' + c.matched);
+    } catch (e) { add('UTF-16LE BOM', false, e.message); }
+
+    try {
+      add('二进制判定：含 NUL 视为二进制', isBinary(new Uint8Array([0x41, 0x00, 0x42]), 'utf-8') === true, '');
+      add('二进制判定：UTF-16 不误判', isBinary(new Uint8Array([0x41, 0x00, 0x42, 0x00]), 'utf-16le') === false, '');
+      const u16nobom = utf16leBytes('没有 BOM 的 UTF-16 日志\n关键字 在此\n');
+      add('无 BOM 的 UTF-16 靠字节分布嗅探', detectEncoding(u16nobom) === 'utf-16le', detectEncoding(u16nobom));
+    } catch (e) { add('二进制/UTF-16 嗅探', false, e.message); }
+
+    if (avail['gb18030']) {
+      try {
+        const bytes = hexToBytes(FIX.gbkHex);
+        const e1 = detectEncoding(bytes);
+        const text = decodeBytes(bytes, e1);
+        const c = collect(splitLines(text), makeMatcher('关键字', {}).matchers, { perFileCap: 50, ctxLines: 0 });
+        const ok = text === FIX.gbkText && (e1 === 'gb18030' || e1 === 'gbk') && c.matched === 1 && c.items[0].n === 2;
+        add('GBK/GB18030：字节夹具解码 + 命中', ok, 'enc=' + e1 + ' textOk=' + (text === FIX.gbkText) + ' matched=' + c.matched);
+      } catch (e) { add('GBK/GB18030', false, e.message); }
+    } else {
+      skip('GBK/GB18030：当前环境不支持该编码，跳过', '');
+    }
+
+    if (avail['big5']) {
+      try {
+        const text = decodeBytes(hexToBytes(FIX.big5Hex), 'big5');
+        add('Big5 手动指定编码解码', text === FIX.big5Text, text);
+      } catch (e) { add('Big5', false, e.message); }
+    } else {
+      skip('Big5：当前环境不支持该编码，跳过', '');
+    }
+
+    try {
+      const m = makeMatcher('a.b', {});
+      const c1 = collect(['xx a.b yy', 'xx axb yy'], m.matchers, { perFileCap: 50, ctxLines: 0 });
+      add('非正则模式：特殊字符按字面处理', c1.matched === 1, 'matched=' + c1.matched);
+      const c2 = makeMatcher('a.b', { regex: true });
+      const c3 = collect(['xx axb yy'], c2.matchers, { perFileCap: 50, ctxLines: 0 });
+      add('正则模式：. 作为通配符', c3.matched === 1, 'matched=' + c3.matched);
+    } catch (e) { add('字面/正则模式', false, e.message); }
+
+    try {
+      const line = ['ERROR Error error'];
+      const ci = collect(line, makeMatcher('error', {}).matchers, { perFileCap: 50, ctxLines: 0 });
+      const cs = collect(line, makeMatcher('error', { caseSensitive: true }).matchers, { perFileCap: 50, ctxLines: 0 });
+      add('区分大小写开关', ci.matched === 1 && ci.items[0].ranges.length === 3 && cs.items[0].ranges.length === 1,
+        'ranges=' + ci.items[0].ranges.length + '/' + cs.items[0].ranges.length);
+    } catch (e) { add('区分大小写', false, e.message); }
+
+    try {
+      const c = collect(['命中甲', '命中乙', '都不含'], makeMatcher('甲 乙', { multi: true }).matchers, { perFileCap: 50, ctxLines: 0 });
+      add('多关键词 OR 命中', c.matched === 2, 'matched=' + c.matched);
+    } catch (e) { add('多关键词', false, e.message); }
+
+    try {
+      const c = collect(['时间 2024-05-01 开始'], makeMatcher('\\d{4}-\\d{2}', { regex: true }).matchers, { perFileCap: 50, ctxLines: 0 });
+      add('正则表达式模式', c.matched === 1, 'matched=' + c.matched);
+      const bad = makeMatcher('(', { regex: true });
+      add('非法正则返回错误而非抛出', !!bad.error, bad.error || '');
+    } catch (e) { add('正则模式', false, e.message); }
+
+    try {
+      const t0 = Date.now();
+      const c = collect(['abc'], makeMatcher('^', {}).matchers, { perFileCap: 50, ctxLines: 0 });
+      add('零宽匹配不卡死', Date.now() - t0 < 1000 && c.matched === 0, 'matched=' + c.matched);
+    } catch (e) { add('零宽匹配', false, e.message); }
+
+    try {
+      const c = collect(['前一行', '命中行', '后一行', '很远'], makeMatcher('命中', {}).matchers, { perFileCap: 50, ctxLines: 1 });
+      const items = c.items;
+      add('上下文行 ±1', items.length === 3 && items[0].ctx === true && items[1].ctx === false && items[2].ctx === true,
+        items.map(function (x) { return x.n + (x.ctx ? 'c' : 'h'); }).join(','));
+    } catch (e) { add('上下文行', false, e.message); }
+
+    try {
+      const c = collect(['命中1', '命中2', '命中3'], makeMatcher('命中', {}).matchers, { perFileCap: 2, ctxLines: 0 });
+      add('每文件行数上限 + 截断标记', c.items.length === 2 && c.matched === 3 && c.truncated === true,
+        'items=' + c.items.length + ' matched=' + c.matched + ' truncated=' + c.truncated);
+    } catch (e) { add('每文件上限', false, e.message); }
+
+    try {
+      const long = 'x'.repeat(5000) + '关键字';
+      const c = collect([long], makeMatcher('关键字', {}).matchers, { perFileCap: 50, ctxLines: 0 });
+      add('超长行截断显示', c.matched === 1 && c.items[0].clipped === true && c.items[0].text.length === CONST.MAX_LINE_CHARS,
+        'len=' + c.items[0].text.length);
+    } catch (e) { add('超长行', false, e.message); }
+
+    try {
+      add('通配符匹配文件名', globToRegExp('*.log').test('app.log') && !globToRegExp('*.log').test('app.txt'), '');
+      add('通配符支持子路径模式', globToRegExp('2024/*.log').test('2024/a.log'), '');
+      add('子目录过滤（包含匹配）', matchPath('logs/2024-05/a.log', '2024-05', '') === true
+        && matchPath('logs/2024-06/a.log', '2024-05', '') === false, '');
+      add('文件通配过滤', matchPath('a/b.log', '', '*.log;*.txt') === true
+        && matchPath('a/b.bin', '', '*.log;*.txt') === false, '');
+    } catch (e) { add('路径过滤', false, e.message); }
+
+    try {
+      if (typeof ReadableStream === 'function') {
+        const text = '第一行 ok\r\n第二行 关键字 命中\r\n第三行 结束';
+        const bytes = hexToBytes(FIX.gbkHex);
+        const chunks = [bytes.subarray(0, 3), bytes.subarray(3, 4), bytes.subarray(4, bytes.length)];
+        const stream = new ReadableStream({
+          start: function (c) { for (const ch of chunks) c.enqueue(ch); c.close(); }
+        });
+        const m = makeMatcher('关键字', {});
+        const c2 = new HitCollector({ perFileCap: 50, ctxLines: 0 });
+        if (avail['gb18030']) {
+          await scanStream(stream, 'gb18030', m.matchers, c2, null);
+          add('流式解码：跨块切断多字节字符', c2.matched === 1 && c2.totalLines === 3,
+            'matched=' + c2.matched + ' lines=' + c2.totalLines);
+        } else {
+          skip('流式解码：当前环境不支持 GB18030，跳过', '');
+        }
+        const ascii = new ReadableStream({
+          start: function (c) { c.enqueue(new TextEncoder().encode('aa\r')); c.enqueue(new TextEncoder().encode('\nbb\ncc')); c.close(); }
+        });
+        const c3 = new HitCollector({ perFileCap: 50, ctxLines: 0 });
+        await scanStream(ascii, 'utf-8', makeMatcher('bb', {}).matchers, c3, null);
+        add('流式解码：CRLF 跨块切断', c3.matched === 1 && c3.totalLines === 3 && c3.items[0].n === 2,
+          'matched=' + c3.matched + ' lines=' + c3.totalLines);
+      } else {
+        skip('流式解码：当前环境无 ReadableStream，跳过', '');
+      }
+    } catch (e) { add('流式解码', false, e.message); }
+
+    try {
+      const meta = {
+        dir: 'demo', keyword: 'kw', time: '2024-01-01 00:00:00', elapsed: '0.01',
+        scanned: 1, hitFiles: 1, hits: 1, binary: 0, failed: 0, truncated: false,
+        options: { regex: false, caseSensitive: false, multi: false, encoding: 'auto' }
+      };
+      const files = [{ relPath: 'a/b.log', encoding: 'utf-8', matched: 1, truncated: false, items: [{ n: 2, text: 'kw here', ctx: false }] }];
+      const txt = toPlainText(meta, files);
+      const js = JSON.parse(toJSONText(meta, files));
+      add('导出文本格式', txt.indexOf('a/b.log') >= 0 && txt.indexOf('>      2 | kw here') >= 0, txt.split('\r\n')[5] || '');
+      add('导出 JSON 结构', js.files[0].lines[0].n === 2 && js.summary.hits === 1, '');
+    } catch (e) { add('导出格式', false, e.message); }
+
+    try {
+      add('体积格式化', formatBytes(512) === '512 B' && formatBytes(2048) === '2.0 KB' && formatBytes(5 * 1024 * 1024) === '5.0 MB', '');
+    } catch (e) { add('体积格式化', false, e.message); }
+
+    return out;
+  }
+
+  const API = {
+    VERSION: VERSION,
+    CONST: CONST,
+    ENCODING_LABELS: ENCODING_LABELS,
+    availableEncodings: availableEncodings,
+    hasBom: hasBom,
+    sniffUtf16: sniffUtf16,
+    isValidUtf8: isValidUtf8,
+    detectEncoding: detectEncoding,
+    isBinary: isBinary,
+    decodeBytes: decodeBytes,
+    splitLines: splitLines,
+    escapeRegExp: escapeRegExp,
+    makeMatcher: makeMatcher,
+    matchRanges: matchRanges,
+    HitCollector: HitCollector,
+    scanLines: scanLines,
+    streamLines: streamLines,
+    scanStream: scanStream,
+    globToRegExp: globToRegExp,
+    matchPath: matchPath,
+    formatBytes: formatBytes,
+    toPlainText: toPlainText,
+    toJSONText: toJSONText,
+    selfTest: selfTest,
+    FIX: FIX
+  };
+
+  root.__LOGX__ = API;
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+
+<script id="app">
+(function () {
+  'use strict';
+
+  const LOGX = window.__LOGX__;
+  const $ = function (id) { return document.getElementById(id); };
+
+  const el = {
+    dirBtn: $('dirBtn'), compatBtn: $('compatBtn'), fileInput: $('fileInput'),
+    dirName: $('dirName'), modeHint: $('modeHint'),
+    keyword: $('keyword'), runBtn: $('runBtn'), stopBtn: $('stopBtn'), clearBtn: $('clearBtn'),
+    exportTxt: $('exportTxt'), exportJson: $('exportJson'), selftestBtn: $('selftestBtn'),
+    optCase: $('optCase'), optRegex: $('optRegex'), optMulti: $('optMulti'), optCache: $('optCache'),
+    optEncoding: $('optEncoding'), optSubPath: $('optSubPath'), optGlobs: $('optGlobs'),
+    optCtx: $('optCtx'), optPerFile: $('optPerFile'), optTotal: $('optTotal'), optsDetails: $('optsDetails'),
+    progressWrap: $('progressWrap'), progressBar: $('progressBar'), progressText: $('progressText'),
+    summary: $('summary'), summaryText: $('summaryText'), optWrap: $('optWrap'), wrapStat: $('wrapStat'),
+    expandAll: $('expandAll'), collapseAll: $('collapseAll'), copyAll: $('copyAll'),
+    results: $('results'), empty: $('empty'), toast: $('toast'), history: $('history'),
+    selftestPanel: $('selftestPanel'), selftestBody: $('selftestBody'), selftestStat: $('selftestStat'),
+    selftestClose: $('selftestClose')
+  };
+
+  const IGNORED_DIRS = ['$RECYCLE.BIN', 'System Volume Information', '$WinREAgent', 'Recovery',
+    'node_modules', '__pycache__', '.git', '.svn', '.hg', '.idea', '.vscode', 'venv', '.venv'];
+
+  const state = {
+    entries: [], sourceLabel: '', mode: 'none',
+    running: false, abort: false, runId: 0,
+    cache: new Map(), cacheCost: 0, cacheHits: 0, cacheMisses: 0,
+    lastRun: null, lastResults: [], wrapMode: 'auto'
+  };
+
+  const store = {
+    get: function (k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+    set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* file:// 下可能被禁 */ } }
+  };
+
+  let toastTimer = null;
+  function toast(msg, kind) {
+    el.toast.textContent = msg;
+    el.toast.className = 'toast show' + (kind ? ' ' + kind : '');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.toast.className = 'toast'; }, kind === 'error' ? 4500 : 2600);
+  }
+
+  function isIgnoredDir(name) {
+    return IGNORED_DIRS.indexOf(name) >= 0;
+  }
+
+  function isIgnoredRelPath(relPath) {
+    const parts = String(relPath).replace(/\\/g, '/').split('/');
+    for (let i = 0; i < parts.length - 1; i++) if (isIgnoredDir(parts[i])) return true;
+    return false;
+  }
+
+  /* ---------- 目录来源 ---------- */
+
+  function entryFromFile(relPath, file) {
+    return {
+      relPath: relPath, size: file.size, lastModified: file.lastModified || 0,
+      getBytes: function () { return file.arrayBuffer(); },
+      getHead: function (n) { return file.slice(0, n).arrayBuffer(); },
+      getStream: function () {
+        if (typeof file.stream === 'function') return file.stream();
+        return new Response(file).body;
+      }
+    };
+  }
+
+  async function walkHandle(dirHandle, prefix, out, depth) {
+    for await (const pair of dirHandle.entries()) {
+      const name = pair[0], handle = pair[1];
+      const p = prefix + name;
+      if (out.length >= LOGX.CONST.MAX_ENTRIES) return;
+      if (handle.kind === 'file') {
+        try {
+          const f = await handle.getFile();
+          out.push(entryFromFile(p, f));
+        } catch (e) { /* 单个文件不可读，跳过 */ }
+      } else if (handle.kind === 'directory') {
+        if (depth >= LOGX.CONST.MAX_DEPTH || isIgnoredDir(name)) continue;
+        await walkHandle(handle, p + '/', out, depth + 1);
+      }
+    }
+  }
+
+  async function readDropEntry(entry, prefix, out) {
+    if (out.length >= LOGX.CONST.MAX_ENTRIES) return;
+    if (entry.isFile) {
+      const f = await new Promise(function (res, rej) { entry.file(res, rej); });
+      out.push(entryFromFile(prefix + f.name, f));
+      return;
+    }
+    if (entry.isDirectory) {
+      if (isIgnoredDir(entry.name)) return;
+      const dir = prefix + entry.name + '/';
+      const reader = entry.createReader();
+      for (;;) {
+        const batch = await new Promise(function (res, rej) { reader.readEntries(res, rej); });
+        if (!batch.length) break;
+        for (const e of batch) await readDropEntry(e, dir, out);
+      }
+    }
+  }
+
+  function resetCache() {
+    state.cache = new Map();
+    state.cacheCost = 0;
+  }
+
+  function setEntries(entries, note) {
+    resetCache();
+    state.entries = entries;
+    state.mode = note || state.mode;
+    let label = '';
+    if (entries.length) {
+      const first = entries[0].relPath;
+      const i = first.indexOf('/');
+      label = i > 0 ? first.slice(0, i) + '/' : '(单个文件)';
+    }
+    state.sourceLabel = label;
+    el.dirName.textContent = label ? label + ' · 共 ' + entries.length + ' 个文件' : '没有读到文件';
+    el.dirName.title = entries.length ? entries[0].relPath : '';
+    if (!entries.length) toast('没有读到任何文件', 'warn');
+    else toast('已载入 ' + entries.length + ' 个文件' + (note ? ' ' + note : ''));
+  }
+
+  async function loadFromHandle(handle) {
+    const out = [];
+    el.dirName.textContent = '正在读取目录 ' + handle.name + ' …';
+    await new Promise(function (r) { setTimeout(r, 0); });
+    try {
+      await walkHandle(handle, '', out, 0);
+    } catch (e) {
+      toast('读取目录失败：' + (e && e.message ? e.message : e), 'error');
+    }
+    if (out.length >= LOGX.CONST.MAX_ENTRIES) toast('文件数超过上限，已截断到 ' + LOGX.CONST.MAX_ENTRIES + ' 个', 'warn');
+    setEntries(out, '（目录选择 API）');
+  }
+
+  async function pickDir() {
+    if (typeof window.showDirectoryPicker !== 'function' || window.isSecureContext === false) {
+      toast('当前浏览器不支持目录选择 API，已改用「旧版本浏览器下选择」', 'warn');
+      el.fileInput.click();
+      return;
+    }
+    let handle;
+    try {
+      handle = await window.showDirectoryPicker({ id: 'log-extract', mode: 'read' });
+    } catch (e) {
+      const name = e && e.name;
+      if (name === 'AbortError') return;
+      toast('目录选择失败（' + name + '），已切换为「旧版本浏览器下选择」', 'warn');
+      el.fileInput.click();
+      return;
+    }
+    await loadFromHandle(handle);
+  }
+
+  /* ---------- 选项 ---------- */
+
+  function buildEncodingSelect() {
+    const avail = LOGX.availableEncodings();
+    el.optEncoding.textContent = '';
+    for (const e of LOGX.ENCODING_LABELS) {
+      const opt = document.createElement('option');
+      opt.value = e.value;
+      const ok = !!avail[e.value];
+      opt.textContent = e.label + (ok ? '' : '（当前浏览器不支持）');
+      opt.disabled = !ok && e.value !== 'auto';
+      if (e.value === 'auto') opt.selected = true;
+      el.optEncoding.appendChild(opt);
+    }
+  }
+
+  function readOptions() {
+    const num = function (input, def, lo, hi) {
+      let v = parseInt(input.value, 10);
+      if (isNaN(v)) v = def;
+      return Math.max(lo, Math.min(hi, v));
+    };
+    return {
+      keyword: el.keyword.value.trim(),
+      caseSensitive: el.optCase.checked,
+      regex: el.optRegex.checked,
+      multi: el.optMulti.checked,
+      useCache: el.optCache.checked,
+      encoding: el.optEncoding.value || 'auto',
+      subPath: el.optSubPath.value.trim(),
+      globs: el.optGlobs.value.trim(),
+      ctxLines: num(el.optCtx, 0, 0, 10),
+      perFileCap: num(el.optPerFile, 200, 1, 20000),
+      totalCap: num(el.optTotal, 5000, 1, 200000)
+    };
+  }
+
+  function applyOptions(o) {
+    if (!o) return;
+    el.optCase.checked = !!o.caseSensitive;
+    el.optRegex.checked = !!o.regex;
+    el.optMulti.checked = !!o.multi;
+    el.optCache.checked = o.useCache !== false;
+    if (o.encoding) el.optEncoding.value = o.encoding;
+    el.optSubPath.value = o.subPath || '';
+    el.optGlobs.value = o.globs || '';
+    el.optCtx.value = o.ctxLines == null ? 0 : o.ctxLines;
+    el.optPerFile.value = o.perFileCap == null ? 200 : o.perFileCap;
+    el.optTotal.value = o.totalCap == null ? 5000 : o.totalCap;
+  }
+
+  /* ---------- 扫描 ---------- */
+
+  function putCache(key, lines, encoding) {
+    let chars = 0;
+    for (const l of lines) chars += l.length;
+    const cost = chars * 2 + lines.length * 24;
+    if (cost > LOGX.CONST.CACHE_BUDGET) return;
+    state.cache.set(key, { lines: lines, encoding: encoding, cost: cost });
+    state.cacheCost += cost;
+    while (state.cacheCost > LOGX.CONST.CACHE_BUDGET && state.cache.size > 1) {
+      const k = state.cache.keys().next().value;
+      const v = state.cache.get(k);
+      state.cache.delete(k);
+      state.cacheCost -= v.cost;
+    }
+  }
+
+  async function scanOne(entry, matchers, opts, shouldStop) {
+    const collector = new LOGX.HitCollector({ ctxLines: opts.ctxLines, perFileCap: opts.perFileCap });
+    if (!entry.size) return { entry: entry, collector: collector, encoding: '' };
+
+    const key = entry.relPath + '|' + entry.size + '|' + entry.lastModified;
+    if (opts.useCache) {
+      const c = state.cache.get(key);
+      if (c) {
+        state.cache.delete(key);
+        state.cache.set(key, c);
+        state.cacheHits++;
+        LOGX.scanLines(c.lines, matchers, collector, shouldStop);
+        return { entry: entry, collector: collector, encoding: c.encoding, fromCache: true };
+      }
+      state.cacheMisses++;
+    }
+
+    if (entry.size <= LOGX.CONST.CACHE_MAX_FILE) {
+      const bytes = new Uint8Array(await entry.getBytes());
+      const encoding = opts.encoding === 'auto' ? LOGX.detectEncoding(bytes) : opts.encoding;
+      if (LOGX.isBinary(bytes, encoding)) return { entry: entry, collector: collector, encoding: encoding, binary: true };
+      const lines = LOGX.splitLines(LOGX.decodeBytes(bytes, encoding));
+      if (opts.useCache) putCache(key, lines, encoding);
+      LOGX.scanLines(lines, matchers, collector, shouldStop);
+      return { entry: entry, collector: collector, encoding: encoding };
+    }
+
+    const head = new Uint8Array(await entry.getHead(LOGX.CONST.HEAD_BYTES));
+    const encoding = opts.encoding === 'auto' ? LOGX.detectEncoding(head) : opts.encoding;
+    if (LOGX.isBinary(head, encoding)) return { entry: entry, collector: collector, encoding: encoding, binary: true };
+    await LOGX.scanStream(await entry.getStream(), encoding, matchers, collector, shouldStop);
+    return { entry: entry, collector: collector, encoding: encoding, streamed: true };
+  }
+
+  function setProgress(done, total, hits, t0) {
+    const pct = total ? (done / total * 100) : 0;
+    el.progressBar.style.width = pct.toFixed(1) + '%';
+    const secs = t0 ? ((performance.now() - t0) / 1000).toFixed(1) : '0.0';
+    el.progressText.textContent = '已扫描 ' + done + '/' + total + ' · 命中 ' + hits + ' 行 · ' + secs + 's';
+  }
+
+  function renderLine(item) {
+    const row = document.createElement('div');
+    row.className = 'ln' + (item.ctx ? ' ctx' : '');
+    const no = document.createElement('span');
+    no.className = 'no';
+    no.textContent = String(item.n);
+    const tx = document.createElement('span');
+    tx.className = 'tx';
+    if (item.ranges && item.ranges.length) {
+      let pos = 0;
+      for (const r of item.ranges) {
+        if (r[0] > pos) tx.appendChild(document.createTextNode(item.text.slice(pos, r[0])));
+        const mk = document.createElement('mark');
+        mk.textContent = item.text.slice(r[0], r[1]);
+        tx.appendChild(mk);
+        pos = r[1];
+      }
+      if (pos < item.text.length) tx.appendChild(document.createTextNode(item.text.slice(pos)));
+    } else {
+      tx.textContent = item.text;
+    }
+    if (item.clipped) {
+      const c = document.createElement('span');
+      c.className = 'clipped';
+      c.textContent = '…（本行过长，已截断显示）';
+      tx.appendChild(c);
+    }
+    row.appendChild(no);
+    row.appendChild(tx);
+    return row;
+  }
+
+  function cardText(res) {
+    const L = ['=== ' + res.entry.relPath + ' （命中 ' + res.collector.matched + ' 行） ==='];
+    for (const it of res.collector.items) {
+      L.push((it.ctx ? '  ' : '> ') + String(it.n).padStart(6, ' ') + ' | ' + it.text);
+    }
+    return L.join('\r\n');
+  }
+
+  function renderCard(res) {
+    const card = document.createElement('section');
+    card.className = 'card';
+
+    const head = document.createElement('div');
+    head.className = 'card-head';
+
+    const toggle = document.createElement('button');
+    toggle.className = 'btn tiny';
+    toggle.textContent = '折叠';
+    toggle.addEventListener('click', function () {
+      card.classList.toggle('collapsed');
+      const collapsed = card.classList.contains('collapsed');
+      toggle.textContent = collapsed ? '展开' : '折叠';
+      if (!collapsed) scheduleWrap(card);
+    });
+
+    const path = document.createElement('span');
+    path.className = 'path';
+    path.textContent = res.entry.relPath;
+
+    const copy = document.createElement('button');
+    copy.className = 'btn tiny';
+    copy.textContent = '复制本文件';
+    copy.addEventListener('click', function () { copyText(cardText(res), '已复制该文件结果'); });
+
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    const tags = [res.collector.matched + ' 行命中'];
+    if (res.encoding) tags.push(res.encoding);
+    if (res.streamed) tags.push('流式');
+    if (res.fromCache) tags.push('缓存');
+    if (res.collector.truncated) tags.push('已达上限');
+    meta.textContent = tags.join(' · ');
+
+    head.appendChild(toggle);
+    head.appendChild(path);
+    head.appendChild(copy);
+    head.appendChild(meta);
+
+    const body = document.createElement('div');
+    body.className = 'card-body';
+    for (const it of res.collector.items) body.appendChild(renderLine(it));
+
+    card.appendChild(head);
+    card.appendChild(body);
+    scheduleWrap(card);
+    return card;
+  }
+
+  /* ---------- 换行：自动 / 始终换行 / 不换行 ---------- */
+
+  let pendingCards = [];
+  let measureScheduled = false;
+
+  function scheduleWrap(card) {
+    if (!card) return;
+    if (state.wrapMode === 'on') { card.classList.add('wrap'); return; }
+    if (state.wrapMode === 'off') { card.classList.remove('wrap'); return; }
+    pendingCards.push(card);
+    if (measureScheduled) return;
+    measureScheduled = true;
+    requestAnimationFrame(runWrap);
+  }
+
+  function runWrap() {
+    measureScheduled = false;
+    const cards = pendingCards;
+    pendingCards = [];
+    if (!cards.length) return;
+    for (const c of cards) c.classList.remove('wrap');
+    const need = cards.map(function (c) {
+      const b = c.querySelector('.card-body');
+      return !!b && b.clientWidth > 0 && (b.scrollWidth - b.clientWidth) > 1;
+    });
+    for (let i = 0; i < cards.length; i++) if (need[i]) cards[i].classList.add('wrap');
+    updateWrapStat();
+  }
+
+  function updateWrapStat() {
+    const all = el.results.querySelectorAll('.card');
+    let wrapped = 0;
+    for (const c of all) if (c.classList.contains('wrap')) wrapped++;
+    el.wrapStat.textContent = all.length ? ('· ' + wrapped + '/' + all.length + ' 块折行') : '';
+  }
+
+  function remeasureAll() {
+    const cards = el.results.querySelectorAll('.card');
+    if (state.wrapMode === 'auto') {
+      for (const c of cards) scheduleWrap(c);
+      return;
+    }
+    const on = state.wrapMode === 'on';
+    for (const c of cards) c.classList.toggle('wrap', on);
+    updateWrapStat();
+  }
+
+  function initWrap() {
+    const saved = store.get('logx.wrap', 'auto');
+    state.wrapMode = (saved === 'on' || saved === 'off') ? saved : 'auto';
+    el.optWrap.value = state.wrapMode;
+    el.optWrap.addEventListener('change', function () {
+      const v = el.optWrap.value;
+      state.wrapMode = (v === 'on' || v === 'off') ? v : 'auto';
+      store.set('logx.wrap', state.wrapMode);
+      pendingCards = [];
+      remeasureAll();
+    });
+    let t = null;
+    window.addEventListener('resize', function () {
+      if (t) clearTimeout(t);
+      t = setTimeout(remeasureAll, 180);
+    });
+  }
+
+  function resetOutput() {
+    pendingCards = [];
+    el.wrapStat.textContent = '';
+    el.results.textContent = '';
+    el.summary.classList.add('hidden');
+    el.summaryText.textContent = '';
+    el.progressWrap.classList.add('hidden');
+    el.progressBar.style.width = '0%';
+    el.progressText.textContent = '';
+    el.empty.classList.remove('hidden');
+  }
+
+  function setRunning(run) {
+    state.running = run;
+    el.runBtn.disabled = run;
+    el.dirBtn.disabled = run;
+    el.compatBtn.disabled = run;
+    el.stopBtn.disabled = !run;
+    el.clearBtn.disabled = false;
+  }
+
+  function pushHistory(opts) {
+    let h = store.get('logx.history', []);
+    h = h.filter(function (x) { return !(x.keyword === opts.keyword && x.dir === state.sourceLabel); });
+    h.unshift({ keyword: opts.keyword, dir: state.sourceLabel, options: opts, dirCount: state.entries.length });
+    h = h.slice(0, 10);
+    store.set('logx.history', h);
+    renderHistory();
+  }
+
+  function renderHistory() {
+    const h = store.get('logx.history', []);
+    el.history.textContent = '';
+    if (!h.length) return;
+    const tag = document.createElement('span');
+    tag.className = 'hint';
+    tag.textContent = '最近：';
+    el.history.appendChild(tag);
+    for (const item of h) {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.textContent = item.keyword + ' @ ' + (item.dir || '(未选目录)');
+      chip.title = '点击重新填入并提取';
+      chip.addEventListener('click', function () {
+        el.keyword.value = item.keyword;
+        applyOptions(item.options);
+        if (!state.entries.length) { toast('请先选择日志目录', 'warn'); el.dirBtn.focus(); return; }
+        el.optsDetails.open = true;
+        runExtract();
+      });
+      el.history.appendChild(chip);
+    }
+    const clr = document.createElement('span');
+    clr.className = 'chip';
+    clr.textContent = '清除历史';
+    clr.addEventListener('click', function () { store.set('logx.history', []); renderHistory(); });
+    el.history.appendChild(clr);
+  }
+
+  async function runExtract() {
+    if (state.running) return;
+    const opts = readOptions();
+    const m = LOGX.makeMatcher(opts.keyword, opts);
+    if (m.error) { toast(m.error, 'error'); el.keyword.focus(); return; }
+    if (!state.entries.length) { toast('请先选择日志目录', 'error'); el.dirBtn.focus(); return; }
+
+    const targets = state.entries.filter(function (e) { return LOGX.matchPath(e.relPath, opts.subPath, opts.globs); });
+    targets.sort(function (a, b) { return a.relPath.localeCompare(b.relPath, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }); });
+    if (!targets.length) { toast('按当前过滤条件没有可扫描的文件', 'warn'); return; }
+
+    const runId = ++state.runId;
+    state.abort = false;
+    state.cacheHits = 0;
+    state.cacheMisses = 0;
+    state.lastResults = [];
+    resetOutput();
+    setRunning(true);
+    el.progressWrap.classList.remove('hidden');
+    el.empty.classList.add('hidden');
+
+    const t0 = performance.now();
+    const slots = new Array(targets.length);
+    let head = 0, done = 0, hits = 0, hitFiles = 0, binary = 0, failed = 0, truncated = false;
+    const shouldStop = function () { return state.abort || hits >= opts.totalCap; };
+
+    const renderNow = function (res) {
+      if (!res || !res.collector || res.collector.matched <= 0) return;
+      hitFiles++;
+      el.results.appendChild(renderCard(res));
+      state.lastResults.push({
+        relPath: res.entry.relPath, encoding: res.encoding, matched: res.collector.matched,
+        truncated: res.collector.truncated, items: res.collector.items
+      });
+    };
+
+    const flush = function () {
+      while (head < slots.length && slots[head] !== undefined) {
+        const res = slots[head];
+        slots[head] = undefined;
+        head++;
+        renderNow(res);
+      }
+    };
+
+    let next = 0;
+    const worker = async function () {
+      for (;;) {
+        if (runId !== state.runId) return;
+        if (shouldStop()) { if (hits >= opts.totalCap) truncated = true; return; }
+        const i = next++;
+        if (i >= targets.length) return;
+        let res;
+        try {
+          res = await scanOne(targets[i], m.matchers, opts, shouldStop);
+        } catch (e) {
+          res = { entry: targets[i], collector: null, error: (e && e.message) ? e.message : String(e) };
+        }
+        if (runId !== state.runId) return;
+        if (res.error) failed++;
+        else if (res.binary) binary++;
+        else hits += res.collector.matched;
+        if (hits >= opts.totalCap) truncated = true;
+        slots[i] = res;
+        done++;
+        flush();
+        setProgress(done, targets.length, hits, t0);
+      }
+    };
+
+    const workers = [];
+    const n = Math.min(6, targets.length);
+    for (let w = 0; w < n; w++) workers.push(worker());
+    await Promise.all(workers);
+    if (runId !== state.runId) return;
+
+    for (let i = head; i < slots.length; i++) {
+      if (slots[i] !== undefined) { renderNow(slots[i]); slots[i] = undefined; }
+    }
+
+    const elapsed = (performance.now() - t0) / 1000;
+    setRunning(false);
+    el.progressWrap.classList.add('hidden');
+    el.progressBar.style.width = '0%';
+    requestAnimationFrame(updateWrapStat);
+
+    const parts = [];
+    parts.push('扫描 ' + targets.length + ' 个文件');
+    parts.push('命中 ' + hitFiles + ' 个文件 / ' + hits + ' 行');
+    parts.push('用时 ' + elapsed.toFixed(2) + 's');
+    if (binary) parts.push('跳过二进制 ' + binary);
+    if (failed) parts.push('读取失败 ' + failed);
+    if (opts.useCache) parts.push('缓存命中 ' + state.cacheHits + '/' + (state.cacheHits + state.cacheMisses));
+    if (truncated) parts.push('已达总计上限，结果被截断');
+    if (state.abort) parts.push('已手动停止');
+    el.summaryText.textContent = parts.join(' · ');
+    el.summary.classList.remove('hidden');
+    if (!hitFiles) el.empty.classList.remove('hidden');
+
+    if (!state.abort) pushHistory(opts);
+
+    state.lastRun = {
+      dir: state.sourceLabel || '(未选目录)', keyword: opts.keyword, options: opts,
+      time: new Date().toLocaleString(), scanned: targets.length, hitFiles: hitFiles, hits: hits,
+      elapsed: elapsed.toFixed(2), binary: binary, failed: failed, truncated: truncated
+    };
+  }
+
+  /* ---------- 复制与导出 ---------- */
+
+  async function copyText(text, okMsg) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        toast(okMsg || '已复制');
+        return;
+      }
+    } catch (e) { /* 退回 execCommand */ }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      toast(ok ? (okMsg || '已复制') : '复制失败，请手动选择文本', ok ? '' : 'warn');
+    } catch (e) {
+      toast('复制失败：' + (e && e.message ? e.message : e), 'warn');
+    }
+  }
+
+  function download(filename, text, mime, withBom) {
+    const blob = new Blob([withBom ? '\ufeff' + text : text], { type: (mime || 'text/plain') + ';charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 0);
+  }
+
+  function stamp() {
+    const d = new Date();
+    const p = function (x) { return String(x).padStart(2, '0'); };
+    return '' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+  }
+
+  /* ---------- 自检面板 ---------- */
+
+  async function openSelfTest() {
+    el.selftestBody.textContent = '正在自检…';
+    el.selftestStat.textContent = '';
+    el.selftestPanel.classList.remove('hidden');
+    let results = [];
+    try {
+      results = await LOGX.selfTest();
+    } catch (e) {
+      el.selftestBody.textContent = '自检异常：' + (e && e.message ? e.message : e);
+      return;
+    }
+    el.selftestBody.textContent = '';
+    let pass = 0, fail = 0, skipN = 0;
+    for (const r of results) {
+      const row = document.createElement('div');
+      row.className = 'st-row';
+      const s = document.createElement('span');
+      s.className = r.skip ? 'st-skip' : (r.pass ? 'st-pass' : 'st-fail');
+      s.textContent = r.skip ? '跳过' : (r.pass ? '通过' : '失败');
+      const nm = document.createElement('span');
+      nm.className = 'st-name';
+      nm.textContent = r.name;
+      const dt = document.createElement('span');
+      dt.className = 'st-detail';
+      dt.textContent = r.detail || '';
+      row.appendChild(s); row.appendChild(nm); row.appendChild(dt);
+      el.selftestBody.appendChild(row);
+      if (r.skip) skipN++; else if (r.pass) pass++; else fail++;
+    }
+    el.selftestStat.textContent = '通过 ' + pass + ' · 失败 ' + fail + ' · 跳过 ' + skipN + ' · v' + LOGX.VERSION;
+  }
+
+  /* ---------- 事件绑定 ---------- */
+
+  function bind() {
+    el.dirBtn.addEventListener('click', pickDir);
+    el.compatBtn.addEventListener('click', function () { el.fileInput.click(); });
+
+    el.fileInput.addEventListener('change', function () {
+      const files = Array.prototype.slice.call(el.fileInput.files || []);
+      el.fileInput.value = '';
+      if (!files.length) return;
+      const entries = [];
+      let skipped = 0;
+      for (const f of files) {
+        const p = f.webkitRelativePath || f.name;
+        if (isIgnoredRelPath(p)) { skipped++; continue; }
+        entries.push(entryFromFile(p, f));
+      }
+      setEntries(entries, '（旧版本浏览器下选择' + (skipped ? '，已跳过 ' + skipped + ' 个位于 .git / node_modules 等目录的文件' : '') + '）');
+    });
+
+    el.runBtn.addEventListener('click', runExtract);
+    el.keyword.addEventListener('keydown', function (e) { if (e.key === 'Enter') runExtract(); });
+
+    el.stopBtn.addEventListener('click', function () {
+      if (!state.running) return;
+      state.abort = true;
+      toast('正在停止…');
+    });
+
+    el.clearBtn.addEventListener('click', function () {
+      state.runId++;
+      state.abort = false;
+      setRunning(false);
+      state.lastResults = [];
+      state.lastRun = null;
+      resetOutput();
+      el.keyword.value = '';
+      el.keyword.focus();
+      toast('已清空，可输入下一个关键词');
+    });
+
+    el.exportTxt.addEventListener('click', function () {
+      if (!state.lastRun || !state.lastResults.length) { toast('还没有可导出的结果', 'warn'); return; }
+      download('日志提取-' + state.lastRun.keyword.replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 40) + '-' + stamp() + '.txt',
+        LOGX.toPlainText(state.lastRun, state.lastResults), 'text/plain', true);
+    });
+
+    el.exportJson.addEventListener('click', function () {
+      if (!state.lastRun || !state.lastResults.length) { toast('还没有可导出的结果', 'warn'); return; }
+      download('日志提取-' + state.lastRun.keyword.replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 40) + '-' + stamp() + '.json',
+        LOGX.toJSONText(state.lastRun, state.lastResults), 'application/json', false);
+    });
+
+    el.copyAll.addEventListener('click', function () {
+      if (!state.lastRun || !state.lastResults.length) { toast('还没有可复制的结果', 'warn'); return; }
+      copyText(LOGX.toPlainText(state.lastRun, state.lastResults), '已复制全部结果');
+    });
+
+    el.expandAll.addEventListener('click', function () {
+      for (const c of el.results.querySelectorAll('.card')) {
+        c.classList.remove('collapsed');
+        const b = c.querySelector('.card-head .btn.tiny');
+        if (b) b.textContent = '折叠';
+      }
+      remeasureAll();
+    });
+
+    el.collapseAll.addEventListener('click', function () {
+      for (const c of el.results.querySelectorAll('.card')) {
+        c.classList.add('collapsed');
+        const b = c.querySelector('.card-head .btn.tiny');
+        if (b) b.textContent = '展开';
+      }
+      remeasureAll();
+    });
+
+    el.selftestBtn.addEventListener('click', openSelfTest);
+    el.selftestClose.addEventListener('click', function () { el.selftestPanel.classList.add('hidden'); });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        if (!el.selftestPanel.classList.contains('hidden')) { el.selftestPanel.classList.add('hidden'); return; }
+        if (state.running) { state.abort = true; toast('正在停止…'); }
+      }
+    });
+
+    const stopEvent = function (e) { e.preventDefault(); e.stopPropagation(); };
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(function (t) { document.addEventListener(t, stopEvent); });
+    document.addEventListener('dragover', function () { document.body.classList.add('dragging'); });
+    document.addEventListener('dragleave', function (e) {
+      if (!e.relatedTarget) document.body.classList.remove('dragging');
+    });
+    document.addEventListener('drop', async function (e) {
+      document.body.classList.remove('dragging');
+      const dt = e.dataTransfer;
+      if (!dt) return;
+      const out = [];
+      try {
+        if (dt.items && dt.items.length && dt.items[0].webkitGetAsEntry) {
+          const roots = [];
+          for (const item of dt.items) {
+            const en = item.webkitGetAsEntry && item.webkitGetAsEntry();
+            if (en) roots.push(en);
+          }
+          if (roots.length) {
+            toast('正在读取拖入的内容…');
+            for (const en of roots) await readDropEntry(en, '', out);
+          }
+        }
+        if (!out.length && dt.files) {
+          for (const f of dt.files) out.push(entryFromFile(f.name, f));
+        }
+      } catch (err) {
+        toast('读取拖入内容失败：' + (err && err.message ? err.message : err), 'error');
+      }
+      if (!out.length) { toast('没有读到文件', 'warn'); return; }
+      setEntries(out, '（拖拽导入）');
+    });
+  }
+
+  function detectMode() {
+    const hasApi = typeof window.showDirectoryPicker === 'function' && window.isSecureContext !== false;
+    if (hasApi) {
+      el.dirBtn.classList.add('primary');
+      el.modeHint.textContent = '当前模式：目录选择 API（推荐）· 同一目录换关键词无需重选；旧版本浏览器请用右侧的「旧版本浏览器下选择」，或直接把文件夹拖进来。';
+    } else {
+      el.compatBtn.classList.add('primary');
+      el.modeHint.textContent = '当前浏览器不支持目录选择 API，请用「旧版本浏览器下选择」，或直接把文件夹拖到页面上（功能一样）。';
+    }
+  }
+
+  buildEncodingSelect();
+  bind();
+  initWrap();
+  detectMode();
+  renderHistory();
+})();
+</script>
+</body>
+</html>

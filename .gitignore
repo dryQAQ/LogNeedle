@@ -1,0 +1,18 @@
+# Scratch space used while verifying changes locally (probe scripts, generated
+# demo data, throwaway browser profiles). Never part of the product.
+.verify/
+
+# Browser profiles created by tools/screenshot.ps1 and tools/screenshot.mjs.
+.browser-profile/
+edge-prof/
+
+# Temporary files
+*.tmp
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# NOTE: docs/*.png and examples/ are intentionally NOT ignored.
+#   docs/screenshot*.png are referenced by README.md and README.zh-CN.md.
+#   examples/sample-logs/ is the demo data the screenshot scripts and the
+#   documentation point at.

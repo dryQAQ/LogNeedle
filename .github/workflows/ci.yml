@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Static + core checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run tools/check.mjs (static + core logic)
+        run: node tools/check.mjs logneedle.html
+
+      - name: Assert single-file product with no external references
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # 1) The product must stay exactly one HTML file at the repo root.
+          count=$(find . -maxdepth 1 -type f -name '*.html' | wc -l | tr -d ' ')
+          name=$(find . -maxdepth 1 -type f -name '*.html' -printf '%f\n')
+          echo "root HTML files: count=$count name=${name:-<none>}"
+          if [ "$count" != "1" ] || [ "$name" != "logneedle.html" ]; then
+            echo "::error::the repository root must contain exactly one HTML file, and it must be logneedle.html"
+            exit 1
+          fi
+
+          # 2) No network references of any kind inside the product file.
+          if grep -nE 'https?://' logneedle.html; then
+            echo "::error::logneedle.html contains an http(s) URL; it must work fully offline"
+            exit 1
+          fi
+
+          # 3) No external resources (scripts, stylesheets, images).
+          if grep -nE '<script[^>]+src=|<link[^>]+href=|<img[^>]+src=' logneedle.html; then
+            echo "::error::logneedle.html loads an external resource; it must be self-contained"
+            exit 1
+          fi
+
+          echo "OK: one self-contained file, no external references"

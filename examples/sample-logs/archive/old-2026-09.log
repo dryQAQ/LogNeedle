@@ -1,0 +1,7 @@
+2026-09-30 23:58:00 INFO  [main] graceful shutdown requested
+2026-09-30 23:58:01 INFO  [main] flushed 3 pending tasks
+2026-09-30 23:59:59 ERROR [main] shutdown timeout, forcing exit after 60s
+2026-10-01 00:00:00 INFO  [main] service starting, pid=4711, version=3.14.1
+2026-10-01 00:00:03 INFO  [db] connection pool ready, size=16
+2026-10-01 00:03:22 WARN  [order] payment callback slow 2750ms, order=SO202609300017
+2026-10-01 00:03:25 INFO  [order] payment ok, order=SO202609300017
